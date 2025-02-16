@@ -532,7 +532,6 @@
           document.getElementById('folderInput').click();
         }
       });
-
       document.getElementById('zipInput').addEventListener('change', async (e) => {
         const loadingOverlay = document.getElementById('loadingOverlay');
         loadingOverlay.style.display = 'flex';
@@ -540,51 +539,65 @@
         try {
             const zipFile = e.target.files[0];
             if (!zipFile) {
-            throw new Error('No file selected.');
+                throw new Error('No file selected.');
             }
 
             // Log the file size and type for debugging
             console.log('ZIP File:', zipFile.name, 'Size:', zipFile.size, 'Type:', zipFile.type);
 
             if (zipFile.size === 0) {
-            throw new Error('The selected ZIP file is empty.');
+                throw new Error('The selected ZIP file is empty.');
             }
 
             const zip = await JSZip.loadAsync(zipFile).catch(error => {
-            console.error('Error loading ZIP file:', error);
-            throw new Error('Failed to load ZIP file. It may be corrupted or invalid.');
+                console.error('Error loading ZIP file:', error);
+                throw new Error('Failed to load ZIP file. It may be corrupted or invalid.');
             });
+
+            // Log all files in the ZIP for debugging
+            console.log('Files in ZIP:', Object.keys(zip.files));
 
             projectFiles.clear();
             const imageFiles = new Map();
+            const audioFiles = new Map();
 
             // Process all files in the ZIP
             await Promise.all(Object.keys(zip.files).map(async (filename) => {
-            const file = zip.files[filename];
-            if (!file.dir) {
-                const blob = await file.async('blob').catch(error => {
-                console.error(`Error processing file ${filename}:`, error);
-                throw new Error(`Failed to process file: ${filename}`);
-                });
-                const virtualPath = filename; // Preserve ZIP structure
-                imageFiles.set(virtualPath, new File([blob], filename));
-            }
+                const file = zip.files[filename];
+                if (!file.dir) {
+                    const blob = await file.async('blob').catch(error => {
+                        console.error(`Error processing file ${filename}:`, error);
+                        throw new Error(`Failed to process file: ${filename}`);
+                    });
+                    const virtualPath = filename; // Preserve the full path
+
+                    if (filename.endsWith('.wav')) {
+                        audioFiles.set(virtualPath, new File([blob], filename));
+                        console.log('Added audio file:', virtualPath); // Debug log
+                    } else {
+                        imageFiles.set(virtualPath, new File([blob], filename));
+                    }
+                }
             }));
+
+            // Log all audio files in the map for debugging
+            console.log('Audio Files in Map:', Array.from(audioFiles.keys()));
 
             // Find and process RPY files
             const rpyFiles = Array.from(imageFiles.values()).filter(f => f.name.endsWith('.rpy'));
             if (rpyFiles.length === 0) {
-            throw new Error('No .rpy files found in the ZIP.');
+                throw new Error('No .rpy files found in the ZIP.');
             }
 
             for (const rpyFile of rpyFiles) {
-            const content = await rpyFile.text();
-            const scenes = parseRPY(content);
-            projectFiles.set(rpyFile.name.replace('.rpy', ''), {
-                file: rpyFile,
-                scenes,
-                images: imageFiles
-            });
+                const content = await rpyFile.text();
+                const scenes = parseRPY(content);
+                projectFiles.set(rpyFile.name.replace('.rpy', ''), {
+                    file: rpyFile,
+                    scenes,
+                    images: imageFiles,
+                    audio: audioFiles // Include audio files in the projectFiles map
+                });
             }
 
             displayFiles();
@@ -597,8 +610,7 @@
         } finally {
             loadingOverlay.style.display = 'none';
         }
-        });
-
+    });
       document.getElementById('folderInput').addEventListener('change', async (e) => {
         const loadingOverlay = document.getElementById('loadingOverlay');
         loadingOverlay.style.display = 'flex';
